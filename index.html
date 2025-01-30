@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chess AI - DeepSeek</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --light-square: #f0d9b5;
+            --dark-square: #b58863;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Arial', sans-serif;
+            background: #2c3e50;
+            color: white;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #board {
+            width: min(90vw, 560px);
+            height: min(90vw, 560px);
+            margin: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+
+        .panel {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 250px;
+        }
+
+        button {
+            background: #3498db;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.3s;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        select {
+            padding: 8px;
+            border-radius: 5px;
+            margin: 5px;
+        }
+
+        #move-history {
+            height: 300px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .timer {
+            font-size: 1.5em;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <h1>DeepSeek Chess AI</h1>
+    
+    <div class="container">
+        <div id="board"></div>
+        
+        <div class="panel">
+            <div class="controls">
+                <button onclick="newGame()">🔄 New Game</button>
+                <button onclick="flipBoard()">🔄 Flip Board</button>
+                <button onclick="showAnalysis()">📊 Analysis</button>
+                <button onclick="toggleHint()">💡 Hints</button>
+                <button onclick="undoMove()">⏪ Undo</button>
+                
+                <select id="difficulty" onchange="updateDifficulty()">
+                    <option value="1">Beginner (Depth 5)</option>
+                    <option value="2" selected>Intermediate (Depth 12)</option>
+                    <option value="3">Expert (Depth 18)</option>
+                </select>
+            </div>
+
+            <div class="timer">
+                ⏳ Player: <span id="player-time">0:00</span><br>
+                ⚡ AI: <span id="ai-time">0:00</span>
+            </div>
+
+            <h3>Move History</h3>
+            <div id="move-history"></div>
+            
+            <h3>Scoreboard</h3>
+            <div id="scoreboard">
+                Wins: <span id="wins">0</span> 
+                Losses: <span id="losses">0</span> 
+                Draws: <span id="draws">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="promotion-modal" class="modal"></div>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stockfish.js@0.1.0/stockfish.min.js"></script>
+
+    <script>
+        let game = new Chess();
+        let board = null;
+        let stockfish = new Stockfish();
+        let playerColor = 'white';
+        let moveHistory = [];
+        let difficulty = 12;
+        let hintsEnabled = false;
+        let playerTime = 0;
+        let aiTime = 0;
+        let gameTimer = null;
+
+        function initBoard() {
+            const config = {
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: handleMove,
+                onSnapEnd: updateUI,
+                orientation: playerColor,
+                showNotation: true,
+                animationDuration: 300,
+                pieceTheme: 'https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/img/chesspieces/wikipedia/{piece}.png'
+            };
+            board = Chessboard('board', config);
+        }
+
+        function updateDifficulty() {
+            const levels = {1: 5, 2: 12, 3: 18};
+            difficulty = levels[document.getElementById('difficulty').value];
+        }
+
+        function updateMoveHistory(move) {
+            const historyElement = document.getElementById('move-history');
+            moveHistory.push(move);
+            historyElement.innerHTML = moveHistory.map((m, i) => 
+                `<div>${i+1}. ${m.san}</div>`).join('');
+            historyElement.scrollTop = historyElement.scrollHeight;
+        }
+
+        function startTimer() {
+            clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                game.turn() === playerColor[0] ? playerTime++ : aiTime++;
+                document.getElementById('player-time').textContent = formatTime(playerTime);
+                document.getElementById('ai-time').textContent = formatTime(aiTime);
+            }, 1000);
+        }
+
+        function handleMove(source, target) {
+            const piece = game.get(source);
+            if (piece.type === 'p' && 
+                ((playerColor === 'white' && target[1] === '8') ||
+                 (playerColor === 'black' && target[1] === '1'))) {
+                handlePromotion(source, target);
+                return 'snapback';
+            }
+
+            const move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q'
+            });
+
+            if (move === null) return 'snapback';
+            
+            updateMoveHistory(move);
+            updateUI();
+            setTimeout(makeAIMove, 500);
+        }
+
+        function makeAIMove() {
+            stockfish.postMessage('position fen ' + game.fen());
+            stockfish.postMessage('go depth ' + difficulty);
+            
+            stockfish.onmessage = (event) => {
+                if (event.data.includes('bestmove')) {
+                    const result = event.data.match(/bestmove (\w+)/);
+                    if (result) {
+                        const move = result[1];
+                        const from = move.substring(0, 2);
+                        const to = move.substring(2, 4);
+                        const madeMove = game.move({ from, to, promotion: 'q' });
+                        
+                        if (madeMove) {
+                            board.position(game.fen());
+                            updateMoveHistory(madeMove);
+                            updateUI();
+                        }
+                    }
+                }
+            };
+        }
+
+        function updateStatus() {
+            let status = '';
+            if (game.isCheckmate()) {
+                const winner = game.turn() === 'w' ? 'Black' : 'White';
+                if (winner === (playerColor === 'white' ? 'White' : 'Black')) {
+                    document.getElementById('wins').textContent++;
+                } else {
+                    document.getElementById('losses').textContent++;
+                }
+                status = `Game over: ${winner} wins!`;
+                saveStatistics();
+            } else if (game.isDraw()) {
+                document.getElementById('draws').textContent++;
+                status = 'Game drawn';
+                saveStatistics();
+            } else {
+                status = `${playerColor === 'white' ? 'White' : 'Black'}'s turn`;
+                if (game.isCheck()) status += ' (Check!)';
+            }
+            document.getElementById('status').textContent = status;
+        }
+
+        function newGame() {
+            game.reset();
+            playerColor = Math.random() < 0.5 ? 'white' : 'black';
+            moveHistory = [];
+            playerTime = 0;
+            aiTime = 0;
+            initBoard();
+            updateStatus();
+            if (playerColor === 'black') setTimeout(makeAIMove, 500);
+        }
+
+        function flipBoard() {
+            playerColor = playerColor === 'white' ? 'black' : 'white';
+            board.orientation(playerColor);
+        }
+
+        window.onload = () => {
+            newGame();
+            loadStatistics();
+            setInterval(saveStatistics, 10000);
+        };
+
+        function loadStatistics() {
+            const stats = JSON.parse(localStorage.getItem('chessStats') || '{}');
+            document.getElementById('wins').textContent = stats.wins || 0;
+            document.getElementById('losses').textContent = stats.losses || 0;
+            document.getElementById('draws').textContent = stats.draws || 0;
+        }
+
+        function saveStatistics() {
+            const stats = {
+                wins: parseInt(document.getElementById('wins').textContent),
+                losses: parseInt(document.getElementById('losses').textContent),
+                draws: parseInt(document.getElementById('draws').textContent)
+            };
+            localStorage.setItem('chessStats', JSON.stringify(stats));
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+  </html>
