@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chess AI - DeepSeek</title>
+    <base href="/gamechess/">
+    <title>Chess AI - Abdellah Fourka</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.css">
     <style>
         :root {
             --light-square: #f0d9b5;
@@ -58,12 +60,6 @@
             background: #2980b9;
         }
 
-        select {
-            padding: 8px;
-            border-radius: 5px;
-            margin: 5px;
-        }
-
         #move-history {
             height: 300px;
             overflow-y: auto;
@@ -77,22 +73,10 @@
             margin: 10px 0;
             text-align: center;
         }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #34495e;
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 1000;
-        }
     </style>
 </head>
 <body>
-    <h1>DeepSeek Chess AI</h1>
+    <h1>Abdellah Fourka Chess AI</h1>
     
     <div class="container">
         <div id="board"></div>
@@ -101,14 +85,10 @@
             <div class="controls">
                 <button onclick="newGame()">🔄 New Game</button>
                 <button onclick="flipBoard()">🔄 Flip Board</button>
-                <button onclick="showAnalysis()">📊 Analysis</button>
-                <button onclick="toggleHint()">💡 Hints</button>
-                <button onclick="undoMove()">⏪ Undo</button>
-                
                 <select id="difficulty" onchange="updateDifficulty()">
-                    <option value="1">Beginner (Depth 5)</option>
-                    <option value="2" selected>Intermediate (Depth 12)</option>
-                    <option value="3">Expert (Depth 18)</option>
+                    <option value="1">Beginner</option>
+                    <option value="2" selected>Intermediate</option>
+                    <option value="3">Expert</option>
                 </select>
             </div>
 
@@ -129,9 +109,7 @@
         </div>
     </div>
 
-    <div id="promotion-modal" class="modal"></div>
-
-    <!-- Libraries -->
+    <!-- Required Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard-1.0.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stockfish.js@0.1.0/stockfish.min.js"></script>
@@ -143,7 +121,6 @@
         let playerColor = 'white';
         let moveHistory = [];
         let difficulty = 12;
-        let hintsEnabled = false;
         let playerTime = 0;
         let aiTime = 0;
         let gameTimer = null;
@@ -168,32 +145,7 @@
             difficulty = levels[document.getElementById('difficulty').value];
         }
 
-        function updateMoveHistory(move) {
-            const historyElement = document.getElementById('move-history');
-            moveHistory.push(move);
-            historyElement.innerHTML = moveHistory.map((m, i) => 
-                `<div>${i+1}. ${m.san}</div>`).join('');
-            historyElement.scrollTop = historyElement.scrollHeight;
-        }
-
-        function startTimer() {
-            clearInterval(gameTimer);
-            gameTimer = setInterval(() => {
-                game.turn() === playerColor[0] ? playerTime++ : aiTime++;
-                document.getElementById('player-time').textContent = formatTime(playerTime);
-                document.getElementById('ai-time').textContent = formatTime(aiTime);
-            }, 1000);
-        }
-
         function handleMove(source, target) {
-            const piece = game.get(source);
-            if (piece.type === 'p' && 
-                ((playerColor === 'white' && target[1] === '8') ||
-                 (playerColor === 'black' && target[1] === '1'))) {
-                handlePromotion(source, target);
-                return 'snapback';
-            }
-
             const move = game.move({
                 from: source,
                 to: target,
@@ -230,28 +182,6 @@
             };
         }
 
-        function updateStatus() {
-            let status = '';
-            if (game.isCheckmate()) {
-                const winner = game.turn() === 'w' ? 'Black' : 'White';
-                if (winner === (playerColor === 'white' ? 'White' : 'Black')) {
-                    document.getElementById('wins').textContent++;
-                } else {
-                    document.getElementById('losses').textContent++;
-                }
-                status = `Game over: ${winner} wins!`;
-                saveStatistics();
-            } else if (game.isDraw()) {
-                document.getElementById('draws').textContent++;
-                status = 'Game drawn';
-                saveStatistics();
-            } else {
-                status = `${playerColor === 'white' ? 'White' : 'Black'}'s turn`;
-                if (game.isCheck()) status += ' (Check!)';
-            }
-            document.getElementById('status').textContent = status;
-        }
-
         function newGame() {
             game.reset();
             playerColor = Math.random() < 0.5 ? 'white' : 'black';
@@ -274,6 +204,37 @@
             setInterval(saveStatistics, 10000);
         };
 
+        // Helper functions
+        function updateMoveHistory(move) {
+            const historyElement = document.getElementById('move-history');
+            moveHistory.push(move);
+            historyElement.innerHTML = moveHistory.map((m, i) => 
+                `<div>${i+1}. ${m.san}</div>`).join('');
+            historyElement.scrollTop = historyElement.scrollHeight;
+        }
+
+        function updateStatus() {
+            let status = '';
+            if (game.isCheckmate()) {
+                const winner = game.turn() === 'w' ? 'Black' : 'White';
+                if (winner === (playerColor === 'white' ? 'White' : 'Black')) {
+                    document.getElementById('wins').textContent++;
+                } else {
+                    document.getElementById('losses').textContent++;
+                }
+                status = `Game over: ${winner} wins!`;
+                saveStatistics();
+            } else if (game.isDraw()) {
+                document.getElementById('draws').textContent++;
+                status = 'Game drawn';
+                saveStatistics();
+            } else {
+                status = `${playerColor === 'white' ? 'White' : 'Black'}'s turn`;
+                if (game.isCheck()) status += ' (Check!)';
+            }
+            document.getElementById('status').textContent = status;
+        }
+
         function loadStatistics() {
             const stats = JSON.parse(localStorage.getItem('chessStats') || '{}');
             document.getElementById('wins').textContent = stats.wins || 0;
@@ -289,12 +250,6 @@
             };
             localStorage.setItem('chessStats', JSON.stringify(stats));
         }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
     </script>
 </body>
-  </html>
+</html>
